@@ -5,6 +5,7 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
     CONF_ENABLE_RF,
@@ -15,6 +16,7 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import OrviboCoordinator
+from .orvibo.orvibo import OrviboException
 from .orvibo_client import OrviboClient
 from .services import async_register_services
 from .store import OrviboCodeStore
@@ -34,10 +36,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     enable_rf = entry.options.get(CONF_ENABLE_RF, entry.data.get(CONF_ENABLE_RF, True))
 
     client = OrviboClient(host=host, model_hint=model_hint, enable_rf=enable_rf)
-    await client.async_connect()
-    capabilities = client.detect_capabilities("irda", model_hint, enable_rf)
-    coordinator = OrviboCoordinator(hass, client, capabilities)
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await client.async_connect()
+        capabilities = client.detect_capabilities(
+            client.device.type, model_hint, enable_rf
+        )
+        coordinator = OrviboCoordinator(hass, client, capabilities)
+        await coordinator.async_config_entry_first_refresh()
+    except OrviboException as err:
+        raise ConfigEntryNotReady(
+            f"Unable to initialize Orvibo device at {host}"
+        ) from err
 
     hass.data[DATA_CLIENTS][entry.entry_id] = client
     hass.data[DATA_STORES][entry.entry_id] = OrviboCodeStore(hass, entry.entry_id)

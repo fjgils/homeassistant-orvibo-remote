@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant, ServiceCall
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_CODE,
@@ -57,6 +58,22 @@ def _resolve_entry_id(hass: HomeAssistant, call: ServiceCall) -> str:
     if entry_id := call.data.get(CONF_ENTRY_ID):
         return entry_id
 
+    if entity_ids := call.data.get(ATTR_ENTITY_ID):
+        registry = er.async_get(hass)
+        resolved_entry_ids: set[str] = set()
+        for entity_id in entity_ids:
+            if entity_entry := registry.async_get(entity_id):
+                if entity_entry.config_entry_id:
+                    resolved_entry_ids.add(entity_entry.config_entry_id)
+
+        if len(resolved_entry_ids) == 1:
+            return next(iter(resolved_entry_ids))
+        if len(resolved_entry_ids) > 1:
+            raise ValueError(
+                "entity_id target includes multiple config entries; specify entry_id"
+            )
+        raise ValueError("No config entry found for entity_id target")
+
     clients = hass.data.get(DATA_CLIENTS, {})
     if len(clients) == 1:
         return next(iter(clients))
@@ -94,8 +111,14 @@ async def async_register_services(hass: HomeAssistant) -> None:
         store = stores[entry_id]
 
         code = call.data.get(CONF_CODE)
+        code_name = call.data.get(CONF_CODE_NAME)
+
+        if code is not None and code_name is not None:
+            raise ValueError("Provide either code_name or code, not both")
+        if code is None and code_name is None:
+            raise ValueError("Either code_name or code is required")
+
         if code is None:
-            code_name = call.data[CONF_CODE_NAME]
             stored = await store.get_code(protocol, code_name)
             if stored is None:
                 raise ValueError(f"Code '{code_name}' not found")

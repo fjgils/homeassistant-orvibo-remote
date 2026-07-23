@@ -103,8 +103,13 @@ class OrviboRemote(RemoteEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        hardware_type = "irda"
+        try:
+            hardware_type = self._client.device.type
+        except OrviboException:
+            pass
         capabilities = self._client.detect_capabilities(
-            hardware_type="irda",
+            hardware_type=hardware_type,
             model_hint=self._client.model_hint,
             enable_rf=self._client.enable_rf,
         )
