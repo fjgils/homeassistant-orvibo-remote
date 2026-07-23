@@ -1,5 +1,5 @@
 {
-    "name": "Orvibo AllOne remote",
+    "name": "Orvibo Allone Pro Remote IR+RF",
     "domains": ["remote"],
     "homeassistant": "2025.12.5",
     "render_readme": true
