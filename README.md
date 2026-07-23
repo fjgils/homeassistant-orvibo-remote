@@ -1,24 +1,170 @@
-# Homeassistant Orvibo remote
+# Home Assistant Orvibo Remote (IR + RF)
 
-[![hacs_badge][hasc-shield]](https://github.com/custom-components/hacs)
-![Project Stage][stage-shield]
-![GitHub][license-shield]
+Integración custom para controlar Orvibo **AllOne / AllInOne** y **AllInOne Pro** desde Home Assistant.
 
-> :warning: **DISCLAIMER:** This code is an early alpha release with all related consequences. If you decide to use it, any feedback is appreciated
+## Resumen ejecutivo
 
-Remote integration for Orvibo AllOne IR remote. Designed to be used with [smartHomeHub/SmartIR](https://github.com/smartHomeHub/SmartIR) integration.
+Este refactor moderniza la integración para:
+- arquitectura basada en **config entries**;
+- capa cliente/protocolo desacoplada de entidades HA;
+- servicios IR + RF con almacenamiento persistente de códigos;
+- retrocompatibilidad con uso YAML heredado en la plataforma `remote`.
 
-## Installation
-You can install this remote via HACS, just add it as a custom repository by clicking a three dots in the top left corder on a HACS page.
+## Auditoría comparativa de librerías
 
-> Small notice about included sources of asyncio_orvibo - it is a slightly modified code, and it has to be there to avoid raising an issue using a `reuse_address = True` inside that lib.
+### Qué módulo embebido se usaba
+El repositorio incluye una copia vendorizada en:
+- `/home/runner/work/homeassistant-orvibo-remote/homeassistant-orvibo-remote/custom_components/orvibo_remote/orvibo/orvibo.py`
 
-## Disclaimer
-This project is not affiliated, associated, authorized, endorsed by, or in any way officially connected with the Shenzhen ORVIBO Technology Co., LTD, or any of its subsidiaries or its affiliates. The official Orvibo website can be found at https://www.orvibo.com/en.
+La copia corresponde funcionalmente al módulo de `fjgils/orvibo-python-module` (fork de `cherezov/orvibo`) con los mismos comandos principales de protocolo UDP (`7161`, `636c`, `6c73`, `6963`, `6463`) y soporte IR+RF433 orientado a switches RF de Orvibo.
 
-## License
-This project is under the MIT license.
+### Diferencias funcionales relevantes
+- `orvibo-python-module`: librería de protocolo (sin capa HA), soporte clásico para discover/subscribe/learn/emit.
+- estado previo de esta integración: entidad `remote` muy básica, sin config flow, sin servicios de gestión de códigos, sin separación arquitectura.
+- `node-orvibo`: referencia más completa de producto/protocolo a nivel de eventos y modelado de capacidades; documenta mejor limitaciones RF.
 
-[license-shield]: https://img.shields.io/github/license/nergal/homeassistant-orvibo-remote
-[hasc-shield]: https://img.shields.io/badge/HACS-Custom-orange.svg
-[stage-shield]: https://img.shields.io/badge/Project%20stage-Draft-orange.svg
+### Implementación más actualizada y por qué
+Para backend de protocolo, la base Python vendorizada sigue siendo útil por estabilidad y dependencia cero.
+Para cobertura funcional/documentación RF, `node-orvibo` es la referencia más completa (capas de eventos, framing RF, documentación de trade-offs de RF).
+
+### Qué partes soportan RF y qué faltaba
+Ya existente (backend vendorizado):
+- aprendizaje RF (`learn_rf433`) y emisión RF (`_learn_emit_rf433`) para switches RF Orvibo.
+
+Faltaba en integración HA:
+- servicios explícitos RF;
+- persistencia/normalización de códigos;
+- exposición de capacidades y ruta de uso estable para usuarios HA;
+- documentación clara de limitaciones RF.
+
+## Decisión técnica de librería base
+
+**Opción C: Vendorizar una versión concreta y documentada** + capa cliente nueva tipada.
+
+Motivos:
+- estabilidad y baja fricción de release;
+- mantiene compatibilidad con instalaciones existentes;
+- permite encapsular deuda técnica del módulo legado detrás de una API async moderna;
+- facilita testear integración sin reescribir completamente el stack de protocolo.
+
+Trade-off:
+- el backend vendorizado mantiene limitaciones históricas del protocolo RF de Orvibo; se documentan y se exponen fallos de forma explícita.
+
+## Compatibilidad de dispositivos
+
+| Dispositivo | IR | RF | Notas |
+|---|---:|---:|---|
+| AllOne / AllInOne clásico | ✅ | ⚠️ | RF depende del flujo SmartSwitch RF433 del protocolo legado |
+| AllInOne Pro | ✅ | ✅ | RF soportado vía servicios `learn_rf` / `send_rf` |
+| S10/S20 socket | ❌ | ❌ | fuera del alcance de esta integración remota |
+
+## Matriz funcional (antes / después)
+
+| Función | Antes | Después |
+|---|---:|---:|
+| Config flow | ❌ | ✅ |
+| Options flow | ❌ | ✅ |
+| Entidad remote | ✅ | ✅ |
+| Learn IR | parcial | ✅ |
+| Send IR | ✅ | ✅ |
+| Learn RF | ❌ | ✅ |
+| Send RF | ❌ | ✅ |
+| Gestión de códigos persistente | ❌ | ✅ |
+| Servicios list/delete | ❌ | ✅ |
+| Alias legacy | ❌ | ✅ |
+
+## Instalación
+
+1. Instalar desde HACS como repositorio custom.
+2. Reiniciar Home Assistant.
+3. Añadir integración “Orvibo Remote” desde UI o mantener YAML legado.
+
+## Configuración
+
+### Recomendado (UI)
+- `host`: IP del Orvibo.
+- `model_hint`: `auto`, `allone`, `allone_pro`.
+- `enable_rf`: habilita capacidades RF en servicios.
+
+### YAML legado (retrocompatibilidad)
+```yaml
+remote:
+  - platform: orvibo_remote
+    host: 192.168.1.50
+    name: Orvibo salón
+    model_hint: auto
+    enable_rf: true
+```
+
+## Servicios
+
+Todos bajo dominio `orvibo_remote`:
+
+| Servicio | Parámetros clave |
+|---|---|
+| `learn_ir` | `entry_id`, `code_name`, `timeout` |
+| `send_ir` | `entry_id`, `code_name` o `code` (`b64:` o base64) |
+| `learn_rf` | `entry_id`, `code_name` |
+| `send_rf` | `entry_id`, `code_name` o `code`, `state` |
+| `list_codes` | `entry_id`, `protocol` opcional |
+| `delete_code` | `entry_id`, `protocol`, `code_name` |
+
+Alias legacy mantenidos:
+- `learn` → `learn_ir`
+- `emit` → `send_ir`
+
+## Ejemplos de automatización
+
+### Enviar IR guardado
+```yaml
+service: orvibo_remote.send_ir
+data:
+  entry_id: TU_ENTRY_ID
+  code_name: tv_power
+```
+
+### Aprender RF
+```yaml
+service: orvibo_remote.learn_rf
+data:
+  entry_id: TU_ENTRY_ID
+  code_name: luz_salon_on
+```
+
+### Enviar RF
+```yaml
+service: orvibo_remote.send_rf
+data:
+  entry_id: TU_ENTRY_ID
+  code_name: luz_salon_on
+  state: true
+```
+
+## Troubleshooting
+
+- Si `learn_ir` no captura, repetir con `timeout` mayor y línea de visión limpia.
+- En RF, usar distancia corta durante aprendizaje inicial.
+- RF433 en Orvibo es esencialmente stateless para switches: no hay lectura fiable de estado real.
+- Si hay timeouts, verificar IP fija y estabilidad Wi‑Fi del dispositivo.
+
+## Riesgos y mitigaciones
+
+- Riesgo: diferencias de firmware en modelos antiguos/pro.
+  - Mitigación: `model_hint` + `enable_rf` configurable por usuario.
+- Riesgo: limitaciones inherentes de RF433.
+  - Mitigación: documentación explícita y errores claros en servicios.
+
+## Migración
+
+- Usuarios YAML existentes pueden seguir usando la plataforma `remote`.
+- Se recomienda migrar a config entry para usar servicios avanzados y gestión de códigos.
+- Servicios legacy `learn` y `emit` se mantienen como alias.
+
+## Limitaciones conocidas
+
+- El protocolo RF soportado está orientado al flujo SmartSwitch RF433 de Orvibo.
+- No se garantiza interoperabilidad con dispositivos RF genéricos fuera de ese flujo.
+
+## Licencia
+
+MIT.
