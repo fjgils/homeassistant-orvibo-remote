@@ -6,7 +6,6 @@ import pytest
 
 from custom_components.orvibo_remote.const import (
     CONF_CODE,
-    CONF_CODE,
     CONF_CODE_NAME,
     CONF_ENTRY_ID,
     DATA_CLIENTS,
