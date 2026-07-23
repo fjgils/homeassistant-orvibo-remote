@@ -10,10 +10,11 @@ from .const import (
     CONF_ENABLE_RF,
     CONF_MODEL_HINT,
     DATA_CLIENTS,
+    DATA_COORDINATORS,
     DATA_STORES,
-    DOMAIN,
     PLATFORMS,
 )
+from .coordinator import OrviboCoordinator
 from .orvibo_client import OrviboClient
 from .services import async_register_services
 from .store import OrviboCodeStore
@@ -22,6 +23,7 @@ from .store import OrviboCodeStore
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data.setdefault(DATA_CLIENTS, {})
     hass.data.setdefault(DATA_STORES, {})
+    hass.data.setdefault(DATA_COORDINATORS, {})
     await async_register_services(hass)
     return True
 
@@ -33,9 +35,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     client = OrviboClient(host=host, model_hint=model_hint, enable_rf=enable_rf)
     await client.async_connect()
+    capabilities = client.detect_capabilities("irda", model_hint, enable_rf)
+    coordinator = OrviboCoordinator(hass, client, capabilities)
+    await coordinator.async_config_entry_first_refresh()
 
     hass.data[DATA_CLIENTS][entry.entry_id] = client
     hass.data[DATA_STORES][entry.entry_id] = OrviboCodeStore(hass, entry.entry_id)
+    hass.data[DATA_COORDINATORS][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -48,6 +54,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     client = hass.data[DATA_CLIENTS].pop(entry.entry_id, None)
     hass.data[DATA_STORES].pop(entry.entry_id, None)
+    hass.data[DATA_COORDINATORS].pop(entry.entry_id, None)
     if client is not None:
         await client.async_close()
 

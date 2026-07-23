@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import logging
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -23,7 +24,7 @@ class OrviboCoordinator(DataUpdateCoordinator[dict[str, bool]]):
     ) -> None:
         super().__init__(
             hass,
-            logger=__import__(__name__).logging.getLogger(__name__),
+            logger=logging.getLogger(__name__),
             name=f"orvibo_{client.host}",
             update_interval=timedelta(seconds=60),
         )

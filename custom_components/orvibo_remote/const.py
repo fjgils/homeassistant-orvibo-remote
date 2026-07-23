@@ -42,4 +42,5 @@ STORAGE_VERSION: Final = 1
 STORAGE_KEY: Final = f"{DOMAIN}_codes"
 DATA_CLIENTS: Final = f"{DOMAIN}_clients"
 DATA_STORES: Final = f"{DOMAIN}_stores"
+DATA_COORDINATORS: Final = f"{DOMAIN}_coordinators"
 DATA_SERVICES_REGISTERED: Final = f"{DOMAIN}_services_registered"

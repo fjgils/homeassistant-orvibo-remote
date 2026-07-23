@@ -46,6 +46,14 @@ class OrviboClient:
         return self._host
 
     @property
+    def model_hint(self) -> str:
+        return self._model_hint
+
+    @property
+    def enable_rf(self) -> bool:
+        return self._enable_rf
+
+    @property
     def device(self) -> Orvibo:
         if self._device is None:
             raise OrviboException("Orvibo device is not connected")
